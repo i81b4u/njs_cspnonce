@@ -33,7 +33,8 @@ module before the `http` block:
 load_module modules/ngx_http_js_module.so;
 ```
 
-With njs 1.0.0 and newer, use QuickJS in the `http` block:
+With njs 0.8.6 and newer, QuickJS is available and can be selected in the
+`http` block:
 
 ```nginx
 http {

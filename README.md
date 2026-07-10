@@ -26,15 +26,20 @@ ending in `==`.
 
 ## nginx setup
 
-Install nginx with the HTTP njs module. In the main `nginx.conf`, load the
-module before the `http` block:
+Install nginx with the HTTP njs module and the HTTP Substitution module
+(`ngx_http_sub_module`, built with `--with-http_sub_module`). The latter is
+needed for the HTML placeholder replacement. In the main `nginx.conf`, load the
+njs module before the `http` block:
 
 ```nginx
 load_module modules/ngx_http_js_module.so;
 ```
 
-With njs 0.8.6 and newer, QuickJS is available and can be selected in the
-`http` block:
+The example works with njs's default engine. That engine is deprecated in njs
+1.0.0, so use QuickJS for new configurations when your installed module
+supports it. QuickJS works with this example in njs 0.8.10 and newer; that is
+the first QuickJS version with the `crypto` module used here. Select it in the
+`http` block only when it is available in your installed module:
 
 ```nginx
 http {
@@ -52,10 +57,15 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Test the headers:
+Test the header and replacement together. The example's diagnostic header is
+used only for this check:
 
 ```sh
-curl -i http://localhost:8080/
+curl -sS -D /tmp/nonce-headers -o /tmp/nonce-body.html http://localhost:8080/
+nonce=$(awk -F ': ' 'tolower($1) == "x-csp-nonce" { print $2 }' /tmp/nonce-headers | tr -d '\r')
+test -n "$nonce"
+grep -F "nonce=\"$nonce\"" /tmp/nonce-body.html
+! grep -Fq '__CSP_NONCE__' /tmp/nonce-body.html
 ```
 
 ## HTML usage
@@ -70,6 +80,13 @@ For static HTML, use a placeholder in nonce attributes:
 
 The example config uses `sub_filter` to replace that placeholder with the same
 request-local value that appears in the CSP header.
+
+Only use this replacement with fully trusted static templates. Do not run a
+whole-response replacement over a page containing user-controlled HTML or text:
+an attacker could include the public `__CSP_NONCE__` marker in an injected
+`<script>` or `<style>` element and receive a valid nonce. Applications should
+instead render nonce attributes only on trusted elements, while escaping
+untrusted content normally.
 
 ## Security notes
 
@@ -90,13 +107,20 @@ The remaining risks are operational:
   HTML body must use one identical nonce value for the request.
 - Do not cache HTML after nonce substitution unless the cache varies per
   generated nonce, which usually defeats the point. Cache templates before
-  substitution instead.
+  substitution instead. This example sends `Cache-Control: no-store` so its
+  substituted responses are not reused by browsers or shared caches.
+- Do not serve pre-compressed HTML through the replacement location. Do not
+  enable `gzip_static` for this HTML; if an upstream sends compressed HTML,
+  arrange for nginx to receive an uncompressed body before substitution.
 - Remove the demo `X-CSP-Nonce` response header in production. Browsers do not
   need it; it is only useful while testing with tools such as `curl`.
 - Avoid broad bypasses such as `'unsafe-inline'` for scripts. They weaken the
   practical value of a nonce-based CSP.
 - Ensure every inline `<script>` or `<style>` element that is intended to run has
   the matching nonce attribute for that response.
+- A nonce does not authorize inline event-handler attributes such as `onclick`,
+  `style` attributes, or `javascript:` URLs. It applies only to `<script>` and
+  `<style>` elements.
 - Do not rely on Shannon entropy over the encoded text as the sole safety check.
   Base64 text has a theoretical maximum of 6 bits per character; values near
   that are expected for random bytes, but the important property is fresh

@@ -22,34 +22,11 @@ function parseCount(value) {
   return count;
 }
 
-function randomBytes(length) {
-  /*
-   * Match getnonce.js: njs documents Uint32Array support for
-   * crypto.getRandomValues(), so generate 32-bit words and split them into
-   * bytes instead of depending on Uint8Array support.
-   */
-  const words = new Uint32Array(Math.ceil(length / 4));
-  crypto.getRandomValues(words);
+function generateNonce() {
+  const bytes = new Uint8Array(NONCE_BYTES);
+  crypto.getRandomValues(bytes);
 
-  const bytes = [];
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    bytes.push(word & 0xff);
-    bytes.push((word >>> 8) & 0xff);
-    bytes.push((word >>> 16) & 0xff);
-    bytes.push((word >>> 24) & 0xff);
-  }
-
-  return bytes.slice(0, length);
-}
-
-function base64EncodeBytes(bytes) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-
-  return btoa(binary).replace(/=+$/, '');
+  return Buffer.from(bytes).toString('base64').replace(/=+$/, '');
 }
 
 const count = parseCount(process.argv[2]);
@@ -60,5 +37,5 @@ for (let i = 0; i < count; i++) {
    * padding is encoding overhead, so this helper strips trailing "=" characters
    * to match the nginx example.
    */
-  console.log(base64EncodeBytes(randomBytes(NONCE_BYTES)));
+  console.log(generateNonce());
 }
